@@ -336,12 +336,33 @@ def atualizar(tipo, r_leves, r_pesados):
 
         for fig in [fig_linha_leves, fig_linha_pesados, fig_barra_leves, fig_barra_pesados]:
             fig.update_layout(
-                plot_bgcolor='white',
-                paper_bgcolor='white',
-                margin=dict(t=20, b=40),
-                showlegend=True,
-                xaxis=dict(gridcolor='#EDEDED'),
-                yaxis=dict(gridcolor='#EDEDED'),
+                title_x=0.5,
+                plot_bgcolor="#FAFAFA",   # fundo mais claro no gráfico
+                paper_bgcolor="#FFFFFF",  # fundo branco no card
+                font=dict(family="Arial", size=14),  # fonte moderna
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=-0.3,
+                    xanchor="center",
+                    x=0.5,
+                    font=dict(size=12)
+                ),
+                margin=dict(t=60, l=40, r=40, b=60),
+                xaxis=dict(
+                    title="Meses",
+                    gridcolor="#E0E0E0",
+                    zeroline=False,
+                    tickfont=dict(size=12),
+                    titlefont=dict(size=14, color="#4A5E7D")
+                ),
+                yaxis=dict(
+                    title="Unidades",
+                    gridcolor="#E0E0E0",
+                    zeroline=False,
+                    tickfont=dict(size=12),
+                    titlefont=dict(size=14, color="#4A5E7D")
+                ),
                 hovermode='x unified'
             )
 
