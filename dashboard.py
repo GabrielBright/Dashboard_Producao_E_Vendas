@@ -343,12 +343,12 @@ def atualizar(tipo, r_leves, r_pesados):
                 legend=dict(
                     orientation="h",
                     yanchor="bottom",
-                    y=-0.2,  # legenda um pouco mais próxima
+                    y=-0.35,  # legenda um pouco mais próxima
                     xanchor="center",
                     x=0.5,
                     font=dict(size=12)
                 ),
-                margin=dict(t=60, l=40, r=40, b=60),
+                margin=dict(t=60, l=40, r=40, b=90),
                 xaxis=dict(
                     title="Meses",
                     gridcolor="#E0E0E0",
