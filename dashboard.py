@@ -19,99 +19,40 @@ server = app.server
 DADOS_VENDAS = {}
 DADOS_PRODUCAO = {}
 
-def carregar_vendas(caminho_arquivo, ano_coluna):
+def extrair_colunas(df, colunas_chave, meses_padrao):
+    dados = {mes: 0 for mes in meses_padrao}
+    for col in df.columns:
+        if any(chave.lower() in str(col).lower() for chave in colunas_chave):
+            dados.update(dict(zip(meses_padrao, pd.to_numeric(df[col], errors='coerce').fillna(0))))
+    return list(dados.values())
+
+def carregar_dados_base(caminho_arquivo, sheet_name, header_offset, colunas_chave):
     try:
-        df_raw = pd.read_excel(caminho_arquivo, sheet_name='I. Emplacamento', header=None)
-
-        total_idx = df_raw.index[df_raw.apply(lambda row: row.astype(str).str.lower().str.contains("emplacamento total de autoveículos", case=False).any(), axis=1)].tolist()
-        if not total_idx:
-            raise ValueError("Tabela 'Emplacamento Total de Autoveículos' não encontrada!")
-
-        header = total_idx[0] + 3
-        df = pd.read_excel(caminho_arquivo, sheet_name='I. Emplacamento', header=[header, header+1])
-        df.columns = [str(col[1]) if str(col[1]) != "nan" else str(col[0]) for col in df.columns]
-
-        col_pesados = None
-        col_leves = None
-        for col in df.columns:
-            if df[col].astype(str).str.lower().str.contains("caminhões|ônibus").any():
-                col_pesados = col
-            if df[col].astype(str).str.lower().str.contains("automóveis|comerciais leves").any():
-                col_leves = col
-
-        if not col_pesados:
-            col_pesados = [c for c in df.columns if "Unnamed" in c][0]
-        if not col_leves:
-            col_leves = [c for c in df.columns if "Unnamed" in c][-1]
-
-        meses_padrao = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
-        for mes in meses_padrao:
-            if mes in df.columns:
-                df[mes] = pd.to_numeric(df[mes], errors='coerce').fillna(0)
-
-        automoveis = df[df[col_leves].str.strip() == "Automóveis"]
-        comerciais = df[df[col_leves].str.strip() == "Comerciais leves"]
-        soma_leves = []
-        for mes in meses_padrao:
-            soma = 0
-            if mes in automoveis.columns:
-                soma += automoveis[mes].sum()
-            if mes in comerciais.columns:
-                soma += comerciais[mes].sum()
-            soma_leves.append(soma)
-
-        pesados = df[df[col_pesados].isin(["Caminhões", "Ônibus"])]
-        soma_pesados = [pesados[mes].sum() if mes in pesados.columns else 0 for mes in meses_padrao]
-
-        total_leves = sum(soma_leves)
-        total_pesados = sum(soma_pesados)
-
-        return meses_padrao, soma_leves, soma_pesados, total_leves, total_pesados
+        df_raw = pd.read_excel(caminho_arquivo, sheet_name=sheet_name, header=None)
+        header = df_raw.index[df_raw.apply(lambda row: any(chave.lower() in str(row).lower() for chave in colunas_chave), axis=1)].tolist()
+        if not header:
+            raise ValueError(f"Dados-chave não encontrados na aba {sheet_name}!")
+        df = pd.read_excel(caminho_arquivo, sheet_name=sheet_name, header=[header[0] + header_offset])
+        df.columns = [str(col).strip() for col in df.columns]
+        return df
+    except FileNotFoundError:
+        raise Exception(f"Arquivo {caminho_arquivo} não encontrado!")
     except Exception as e:
-        raise Exception(f"Erro ao carregar vendas: {str(e)}")
+        raise Exception(f"Erro ao carregar dados: {str(e)}")
+
+def carregar_vendas(caminho_arquivo, ano_coluna):
+    meses_padrao = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+    df = carregar_dados_base(caminho_arquivo, 'I. Emplacamento', 3, ["emplacamento total de autoveículos"])
+    leves = extrair_colunas(df[df['Automóveis'].notna()], ['automóveis', 'comerciais leves'], meses_padrao)
+    pesados = extrair_colunas(df[df['Caminhões'].notna()], ['caminhões', 'ônibus'], meses_padrao)
+    return meses_padrao, leves, pesados, sum(leves), sum(pesados)
 
 def carregar_producao(caminho_arquivo, ano_coluna):
-    try:
-        df_raw = pd.read_excel(caminho_arquivo, sheet_name='VI. Produção', header=None)
-        
-        header_row = None
-        for i, row in enumerate(df_raw.values):
-            if "Unidades" in row:
-                header_row = i
-                break
-
-        if header_row is None:
-            raise ValueError("'Unidades' não encontrada na aba 'VI. Produção'!")
-
-        df = pd.read_excel(caminho_arquivo, sheet_name='VI. Produção', header=header_row)
-        df.columns = [str(col).replace("\n", "").replace("  ", " ").strip() for col in df.columns]
-
-        meses_cols = [ano_coluna, 'Unnamed: 4', 'Unnamed: 5', 'Unnamed: 6', 'Unnamed: 7',
-                      'Unnamed: 8', 'Unnamed: 9', 'Unnamed: 10', 'Unnamed: 11', 'Unnamed: 12',
-                      'Unnamed: 13', 'Unnamed: 14']
-
-        nomes_meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
-        renomear = dict(zip(meses_cols, nomes_meses))
-        df.rename(columns=renomear, inplace=True)
-
-        if ano_coluna == "2025":
-            df.rename(columns={'2025': 'Jan'}, inplace=True)
-
-        for mes in nomes_meses:
-            df[mes] = pd.to_numeric(df[mes], errors='coerce').fillna(0)
-
-        leves = df[df['Unidades'].isin(['Automóveis', 'Comerciais leves'])]
-        pesados = df[df['Unidades'].isin(['Semileves', 'Leves', 'Médios', 'Semipesados', 'Pesados', 'Rodoviário', 'Urbano'])]
-
-        soma_leves = leves[nomes_meses].sum().values.tolist()
-        soma_pesados = pesados[nomes_meses].sum().values.tolist()
-
-        total_leves = sum(soma_leves)
-        total_pesados = sum(soma_pesados)
-
-        return nomes_meses, soma_leves, soma_pesados, total_leves, total_pesados
-    except Exception as e:
-        raise Exception(f"Erro ao carregar produção: {str(e)}")
+    meses_padrao = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+    df = carregar_dados_base(caminho_arquivo, 'VI. Produção', 0, ['unidades'])
+    leves = extrair_colunas(df[df['Unidades'].isin(['Automóveis', 'Comerciais leves'])], meses_padrao, meses_padrao)
+    pesados = extrair_colunas(df[df['Unidades'].isin(['Semileves', 'Leves', 'Médios', 'Semipesados', 'Pesados', 'Rodoviário', 'Urbano'])], meses_padrao, meses_padrao)
+    return meses_padrao, leves, pesados, sum(leves), sum(pesados)
 
 arquivos = {
     "2023": ["siteautoveiculos2023.xlsx", "2023"],
@@ -127,22 +68,15 @@ def inicializar_dados():
             DADOS_VENDAS[ano] = {"meses": meses_v, "leves": leves_v, "pesados": pesados_v}
         except Exception as e:
             print(f"Erro ao carregar vendas para {ano}: {e}")
-            DADOS_VENDAS[ano] = {
-                "meses": ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
-                "leves": [0] * 12,
-                "pesados": [0] * 12
-            }
-
+            DADOS_VENDAS[ano] = {"meses": ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
+                                 "leves": [0] * 12, "pesados": [0] * 12}
         try:
             meses_p, leves_p, pesados_p, total_leves_p, total_pesados_p = carregar_producao(arquivo, ano_col)
             DADOS_PRODUCAO[ano] = {"meses": meses_p, "leves": leves_p, "pesados": pesados_p}
         except Exception as e:
             print(f"Erro ao carregar produção para {ano}: {e}")
-            DADOS_PRODUCAO[ano] = {
-                "meses": ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
-                "leves": [0] * 12,
-                "pesados": [0] * 12
-            }
+            DADOS_PRODUCAO[ano] = {"meses": ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
+                                  "leves": [0] * 12, "pesados": [0] * 12}
 
 inicializar_dados()
 
@@ -160,20 +94,20 @@ def calcular_variacao(atual, anterior):
 def criar_card(titulo, valor, variacao, cor):
     return dbc.Col(dbc.Card([
         dbc.CardBody([
-            html.H6(titulo, className="text-center", style={"color": cor, "fontSize": "16px", "fontWeight": "600"}),
-            html.H3(f"{valor:,.0f}".replace(",", "."), className="text-center fw-bold", style={"color": cor, "fontSize": "24px"}),
-            html.Div(variacao, className="text-center", style={"fontSize": "14px"})
+            html.H6(titulo, className="text-center", style={"color": cor, "fontSize": "18px", "fontWeight": "700"}),
+            html.H3(f"{valor:,.0f}".replace(",", "."), className="text-center fw-bold", style={"color": cor, "fontSize": "28px"}),
+            html.Div(variacao, className="text-center", style={"fontSize": "16px"})
         ])
-    ], className="shadow-sm rounded-3 hover-effect", style={"border": f"2px solid {cor}", "transition": "transform 0.2s", "margin": "10px"}),
+    ], className="shadow-sm rounded-3 hover-effect", style={"border": f"2px solid {cor}", "transition": "transform 0.2s", "margin": "15px", "padding": "15px"}),
     width=4)
 
 app.layout = dbc.Container([
     html.Div([
-        html.H1("Dashboard - Produção & Vendas LATAM", className="text-center", style={"color": "#4A5E7D", "marginBottom": "20px"}),
-        html.Hr(style={"borderTop": "3px solid #F4A261", "width": "250px", "margin": "0 auto 20px"}),
+        html.H1("Dashboard - Produção & Vendas LATAM", className="text-center", style={"color": "#4A5E7D", "marginBottom": "25px", "fontWeight": "700"}),
+        html.Hr(style={"borderTop": "3px solid #F4A261", "width": "250px", "margin": "0 auto 25px"}),
         dcc.RadioItems(id="tipo-radio", options=["Produção", "Vendas"], value="Vendas",
-                       inline=True, inputStyle={"margin-right": "8px", "margin-left": "15px"},
-                       className="text-center", style={"color": "#4A5E7D", "marginBottom": "20px"})
+                       inline=True, inputStyle={"margin-right": "10px", "margin-left": "20px"},
+                       className="text-center", style={"color": "#4A5E7D", "marginBottom": "25px"})
     ], className="shadow rounded p-4 mb-4", style={"background": "linear-gradient(to right, #F9F9F9, #FFFFFF)"}),
 
     html.Div(id="error-message", style={"color": "red", "textAlign": "center", "marginBottom": "20px"}),
@@ -183,41 +117,41 @@ app.layout = dbc.Container([
     dbc.Row([
         dbc.Col([
             html.Div([
-                html.H5("Veículos Leves – Mês a Mês", className="text-center", style={"color": "#4A5E7D", "marginBottom": "10px"}),
-                dcc.Loading(dcc.Graph(id="grafico-linha-leves", style={"height": "400px"})),
+                html.H5("Veículos Leves – Mês a Mês", className="text-center", style={"color": "#4A5E7D", "marginBottom": "15px", "fontWeight": "600"}),
+                dcc.Loading(dcc.Graph(id="grafico-linha-leves", style={"height": "400px", "padding": "15px"})),
                 dcc.RangeSlider(id="slider-leves", min=0, max=11, value=[0, 11],
                                 marks={i: m for i, m in enumerate(['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'])},
                                 step=1),
-                html.Div(id="slider-output-leves", style={"textAlign": "center", "color": "#4A5E7D", "marginTop": "10px"})
-            ], className="shadow rounded p-3 bg-white")
+                html.Div(id="slider-output-leves", style={"textAlign": "center", "color": "#4A5E7D", "marginTop": "15px"})
+            ], className="shadow rounded p-4 bg-white")
         ], width=6, lg=6, md=12),
         dbc.Col([
             html.Div([
-                html.H5("Veículos Leves – Total Anual", className="text-center", style={"color": "#4A5E7D", "marginBottom": "10px"}),
-                dcc.Loading(dcc.Graph(id="grafico-barra-leves", style={"height": "400px"}))
-            ], className="shadow rounded p-3 bg-white")
+                html.H5("Veículos Leves – Total Anual", className="text-center", style={"color": "#4A5E7D", "marginBottom": "15px", "fontWeight": "600"}),
+                dcc.Loading(dcc.Graph(id="grafico-barra-leves", style={"height": "400px", "padding": "15px"}))
+            ], className="shadow rounded p-4 bg-white")
         ], width=6, lg=6, md=12)
     ], className="mb-4"),
 
     dbc.Row([
         dbc.Col([
             html.Div([
-                html.H5("Veículos Pesados – Mês a Mês", className="text-center", style={"color": "#4A5E7D", "marginBottom": "10px"}),
-                dcc.Loading(dcc.Graph(id="grafico-linha-pesados", style={"height": "400px"})),
+                html.H5("Veículos Pesados – Mês a Mês", className="text-center", style={"color": "#4A5E7D", "marginBottom": "15px", "fontWeight": "600"}),
+                dcc.Loading(dcc.Graph(id="grafico-linha-pesados", style={"height": "400px", "padding": "15px"})),
                 dcc.RangeSlider(id="slider-pesados", min=0, max=11, value=[0, 11],
                                 marks={i: m for i, m in enumerate(['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'])},
                                 step=1),
-                html.Div(id="slider-output-pesados", style={"textAlign": "center", "color": "#4A5E7D", "marginTop": "10px"})
-            ], className="shadow rounded p-3 bg-white")
+                html.Div(id="slider-output-pesados", style={"textAlign": "center", "color": "#4A5E7D", "marginTop": "15px"})
+            ], className="shadow rounded p-4 bg-white")
         ], width=6, lg=6, md=12),
         dbc.Col([
             html.Div([
-                html.H5("Veículos Pesados – Total Anual", className="text-center", style={"color": "#4A5E7D", "marginBottom": "10px"}),
-                dcc.Loading(dcc.Graph(id="grafico-barra-pesados", style={"height": "400px"}))
-            ], className="shadow rounded p-3 bg-white")
+                html.H5("Veículos Pesados – Total Anual", className="text-center", style={"color": "#4A5E7D", "marginBottom": "15px", "fontWeight": "600"}),
+                dcc.Loading(dcc.Graph(id="grafico-barra-pesados", style={"height": "400px", "padding": "15px"}))
+            ], className="shadow rounded p-4 bg-white")
         ], width=6, lg=6, md=12)
     ])
-], fluid=True, style={"background": "#F9F9F9", "min-height": "100vh", "padding": "20px"})
+], fluid=True, style={"background": "linear-gradient(to bottom, #F9F9F9, #ECECEC)", "min-height": "100vh", "padding": "25px"})
 
 @app.callback(
     Output("kpis", "children"),
@@ -277,7 +211,7 @@ def atualizar(tipo, r_leves, r_pesados):
                 name=ano,
                 line=dict(color=CORES[ano], width=3),
                 marker=dict(size=8),
-                hovertemplate="%{y} unidades<br>%{x}"
+                hovertemplate="%{y} unidades<br>Mês: %{x}<br>Ano: " + ano
             ))
             fig_linha_pesados.add_trace(go.Scatter(
                 x=meses_filtrados_pesados,
@@ -286,7 +220,7 @@ def atualizar(tipo, r_leves, r_pesados):
                 name=ano,
                 line=dict(color=CORES[ano], width=3),
                 marker=dict(size=8),
-                hovertemplate="%{y} unidades<br>%{x}"
+                hovertemplate="%{y} unidades<br>Mês: %{x}<br>Ano: " + ano
             ))
 
             fig_barra_leves.add_trace(go.Bar(
@@ -294,21 +228,21 @@ def atualizar(tipo, r_leves, r_pesados):
                 y=[sum(l)],
                 name=ano,
                 marker_color=CORES[ano],
-                hovertemplate="%{y} unidades"
+                hovertemplate="%{y} unidades<br>Ano: " + ano
             ))
             fig_barra_pesados.add_trace(go.Bar(
                 x=[ano],
                 y=[sum(p)],
                 name=ano,
                 marker_color=CORES[ano],
-                hovertemplate="%{y} unidades"
+                hovertemplate="%{y} unidades<br>Ano: " + ano
             ))
 
         for fig in [fig_linha_leves, fig_linha_pesados, fig_barra_leves, fig_barra_pesados]:
             fig.update_layout(
                 plot_bgcolor='white',
                 paper_bgcolor='white',
-                margin=dict(t=20, b=40),
+                margin=dict(t=30, b=50),
                 showlegend=True,
                 xaxis=dict(gridcolor='#EDEDED'),
                 yaxis=dict(gridcolor='#EDEDED'),
@@ -319,8 +253,8 @@ def atualizar(tipo, r_leves, r_pesados):
         slider_pesados_text = f"Intervalo: {r_pesados[0] + 1} - {r_pesados[1] + 1} meses"
 
     except Exception as e:
-        print(f"Erro no callback: {e}")  # Log no console para depuração
-        error_message = "Ocorreu um erro. Tente novamente mais tarde."
+        print(f"Erro no callback: {e}")
+        error_message = f"Ocorreu um erro: {str(e)}. Tente novamente mais tarde."
         cards = [
             criar_card("Total Vendas" if tipo == "Vendas" else "Total Produção", 0, html.Span("N/A", style={"color": "gray"}), "#4A5E7D"),
             criar_card("Total Leves", 0, html.Span("N/A", style={"color": "gray"}), "#F4A261"),
@@ -338,7 +272,7 @@ def atualizar(tipo, r_leves, r_pesados):
 if __name__ == "__main__":
     import os
     try:
-        port = int(os.environ.get("PORT", 8050))  
-        app.run_server(host="0.0.0.0", port=port)  
+        port = int(os.environ.get("PORT", 8050))
+        app.run_server(host="0.0.0.0", port=port, debug=True)
     except Exception as e:
         print(f"Erro ao iniciar o servidor Dash: {e}")
