@@ -337,13 +337,13 @@ def atualizar(tipo, r_leves, r_pesados):
         for fig in [fig_linha_leves, fig_linha_pesados, fig_barra_leves, fig_barra_pesados]:
             fig.update_layout(
                 title_x=0.5,
-                plot_bgcolor="#FAFAFA",   # fundo mais claro no gráfico
-                paper_bgcolor="#FFFFFF",  # fundo branco no card
-                font=dict(family="Arial", size=14),  # fonte moderna
+                plot_bgcolor="#FFFFFF",  # fundo do gráfico igual ao fundo do card
+                paper_bgcolor="#FFFFFF",
+                font=dict(family="Arial", size=14),
                 legend=dict(
                     orientation="h",
                     yanchor="bottom",
-                    y=-0.3,
+                    y=-0.2,  # legenda um pouco mais próxima
                     xanchor="center",
                     x=0.5,
                     font=dict(size=12)
