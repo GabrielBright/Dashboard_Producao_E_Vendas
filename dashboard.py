@@ -19,6 +19,12 @@ server = app.server
 DADOS_VENDAS = {}
 DADOS_PRODUCAO = {}
 
+def corrigir_sequencia(sequencia):
+    if max(sequencia) > 1_000_000:
+        return [x / 100_000 for x in sequencia]
+    return sequencia
+
+
 def carregar_vendas(caminho_arquivo, ano_coluna):
     try:
         df_raw = pd.read_excel(caminho_arquivo, sheet_name='I. Emplacamento', header=None)
@@ -46,12 +52,20 @@ def carregar_vendas(caminho_arquivo, ano_coluna):
 
         meses_padrao = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
         for mes in meses_padrao:
-            if mes in df.columns:
-                df[mes] = pd.to_numeric(df[mes], errors='coerce').fillna(0)
+            try:
+                if mes in df.columns:
+                    df[mes] = pd.to_numeric(df[mes], errors='coerce').fillna(0)
+                else:
+                    df[mes] = 0
+            except Exception as e:
+                df[mes] = 0
+                print(f"Erro não foi possivel processar mês {e}")
 
         automoveis = df[df[col_leves].str.strip() == "Automóveis"]
         comerciais = df[df[col_leves].str.strip() == "Comerciais leves"]
+        
         soma_leves = []
+        
         for mes in meses_padrao:
             soma = 0
             if mes in automoveis.columns:
@@ -59,10 +73,14 @@ def carregar_vendas(caminho_arquivo, ano_coluna):
             if mes in comerciais.columns:
                 soma += comerciais[mes].sum()
             soma_leves.append(soma)
-
+            
+        soma_leves = corrigir_sequencia(soma_leves)
+        
         pesados = df[df[col_pesados].isin(["Caminhões", "Ônibus"])]
+        
         soma_pesados = [pesados[mes].sum() if mes in pesados.columns else 0 for mes in meses_padrao]
-
+        soma_pesados = corrigir_sequencia(soma_pesados)
+        
         total_leves = sum(soma_leves)
         total_pesados = sum(soma_pesados)
 
@@ -98,14 +116,24 @@ def carregar_producao(caminho_arquivo, ano_coluna):
             df.rename(columns={'2025': 'Jan'}, inplace=True)
 
         for mes in nomes_meses:
-            df[mes] = pd.to_numeric(df[mes], errors='coerce').fillna(0)
-
+            try:
+                if mes in df.columns:
+                    df[mes] = pd.to_numeric(df[mes], errors='coerce').fillna(0)
+                else:
+                    df[mes] = 0
+            except Exception as e:
+                df[mes] = 0
+                print(f"Não foi possivel processar o mês: ")
+                
         leves = df[df['Unidades'].isin(['Automóveis', 'Comerciais leves'])]
         pesados = df[df['Unidades'].isin(['Semileves', 'Leves', 'Médios', 'Semipesados', 'Pesados', 'Rodoviário', 'Urbano'])]
 
         soma_leves = leves[nomes_meses].sum().values.tolist()
+        soma_leves = corrigir_sequencia(soma_leves)
+        
         soma_pesados = pesados[nomes_meses].sum().values.tolist()
-
+        soma_pesados = corrigir_sequencia(soma_pesados)
+        
         total_leves = sum(soma_leves)
         total_pesados = sum(soma_pesados)
 
@@ -189,35 +217,37 @@ app.layout = dbc.Container([
                                 marks={i: m for i, m in enumerate(['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'])},
                                 step=1),
                 html.Div(id="slider-output-leves", style={"textAlign": "center", "color": "#4A5E7D", "marginTop": "10px"})
-            ], className="shadow rounded p-3 bg-white")
+            ], className="shadow rounded p-3 bg-white", style={"height": "100%"})
         ], width=6, lg=6, md=12),
+        
         dbc.Col([
             html.Div([
                 html.H5("Veículos Leves – Total Anual", className="text-center", style={"color": "#4A5E7D", "marginBottom": "10px"}),
                 dcc.Loading(dcc.Graph(id="grafico-barra-leves", style={"height": "400px"}))
-            ], className="shadow rounded p-3 bg-white")
+            ], className="shadow rounded p-3 bg-white", style={"height": "100%"})
         ], width=6, lg=6, md=12)
-    ], className="mb-4"),
+    ], className="mb-4", style={"display": "flex", "alignItems": "stretch"}),
 
     dbc.Row([
         dbc.Col([
             html.Div([
                 html.H5("Veículos Pesados – Mês a Mês", className="text-center", style={"color": "#4A5E7D", "marginBottom": "10px"}),
-                dcc.Loading(dcc.Graph(id="grafico-linha-pesados", style={"height": "400px"})),
+                dcc.Loading(dcc.Graph(id="grafico-linha-pesados", style={"height": "100%"})),
                 dcc.RangeSlider(id="slider-pesados", min=0, max=11, value=[0, 11],
                                 marks={i: m for i, m in enumerate(['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'])},
                                 step=1),
                 html.Div(id="slider-output-pesados", style={"textAlign": "center", "color": "#4A5E7D", "marginTop": "10px"})
-            ], className="shadow rounded p-3 bg-white")
+            ], className="shadow rounded p-3 bg-white", style={"height": "100%"})
         ], width=6, lg=6, md=12),
+        
         dbc.Col([
             html.Div([
                 html.H5("Veículos Pesados – Total Anual", className="text-center", style={"color": "#4A5E7D", "marginBottom": "10px"}),
-                dcc.Loading(dcc.Graph(id="grafico-barra-pesados", style={"height": "400px"}))
-            ], className="shadow rounded p-3 bg-white")
+                dcc.Loading(dcc.Graph(id="grafico-barra-pesados", style={"height": "100%"}))
+            ], className="shadow rounded p-3 bg-white", style={"height": "100%"})
         ], width=6, lg=6, md=12)
-    ])
-], fluid=True, style={"background": "#F9F9F9", "min-height": "100vh", "padding": "20px"})
+    ], className="mb-4", style={"display": "flex", "alignItems": "stretch"})
+], fluid=True)
 
 @app.callback(
     Output("kpis", "children"),
