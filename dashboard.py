@@ -4,6 +4,8 @@ import dash
 from dash import dcc, html
 from dash.dependencies import Input, Output
 import dash_bootstrap_components as dbc
+from flask import request
+import datetime
 
 CORES = {
     "2023": "#D3D3D3",
@@ -15,6 +17,18 @@ CORES = {
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.FLATLY], suppress_callback_exceptions=True)
 app.title = "Dashboard - Produção & Vendas LATAM"
 server = app.server
+
+@server.before_request
+def log_acesso_visitante():
+    ip = request.remote_addr
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"Acesso ao dashboard - IP: {ip} às {timestamp}")
+    
+    try:
+        with open("acessos.txt", "a") as f:
+            f.write(f"{timestamp} - IP: {ip}\n")
+    except Exception as e:
+        print(f"Erro ao registrar acesso: {e}")
 
 DADOS_VENDAS = {}
 DADOS_PRODUCAO = {}
