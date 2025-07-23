@@ -18,4 +18,4 @@ Este projeto exibe os dados de produção e vendas de veículos leves e pesados 
 
 # Dashboard
 
-![Dashboard LATAM](visualizacao/DashBoard.jpeg)
+![Dashboard LATAM](visualizacao/DashBoard - Produção e Vendas.jpeg)
